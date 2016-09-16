@@ -21,6 +21,9 @@ import sys
 import logging
 
 from jax import __version__
+from jax.runs_generator import RunsGenerator
+from jax.output import MonitorOutput
+from configparser import ConfigParser
 
 __author__ = "Daniel Coderre"
 __copyright__ = "Daniel Coderre"
@@ -43,11 +46,12 @@ def parse_args(args):
         action='version',
         version='jax {ver}'.format(ver=__version__))
     parser.add_argument(
-        dest="config_file",
+        '--config',
+        dest="config",
         help="path to configuration file",
         type=str,
         default="config/default.ini",
-        metavar="INI")
+        metavar="config")
     parser.add_argument(
         '-v',
         '--verbose',
@@ -72,28 +76,28 @@ def main(args):
 
     # Get configuration
     configp = ConfigParser(inline_comment_prefixes='#',
-                           interpolation=ExtendedInterpolation(),
                            strict=True,
                            default_section='powdered_cheddar')
-    configp.read(args.config_file)
+    configp.read(args.config)
 
     # Initialize runs list generator, output plugin, processor
     runs = RunsGenerator(configp)
-    output_plugin = OutputPlugin(configp)
-    processor = Processor(configp)
+    output = MonitorOutput(configp)
+    #processor = Processor(configp)
 
     # Loop runs list, insert data
     autorun=False
     if(configp.getboolean("jax", "autoprocess")):
         autorun = configp.getboolean("jax", "autoprocess")
 
-    while(autorun):
+    while(True):
             
-        for run in RunsGenerator.get():
-            
-            if output_plugin.should_i_process(run):
-                processor.Process(output, run)
-                
+        for run in runs.get():
+            print(run)
+            #if output_plugin.should_i_process(run):
+            #    processor.Process(output, run)
+        if not autorun:
+            break
 
     _logger.info("Monitor stopped")
 

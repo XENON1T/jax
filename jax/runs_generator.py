@@ -3,11 +3,12 @@ Mediates communication with the runs database.
 Allows list input as well if wanted.
 """
 
-import pymongo
-from ConfigParser import ConfigParser
 
+from configparser import ConfigParser
 import logging
 _logger = logging.getLogger(__name__)
+import pymongo
+import os
 
 class RunsGenerator(object):
     """
@@ -19,33 +20,41 @@ class RunsGenerator(object):
 
         # Declare runs DB
         self.db = None
-        if ( config.getstring("runs_input", "runs_uri") and
-             config.getstring("runs_input", "runs_db") and
-             config.getstring("runs_input", "runs_collection") ):
+        if ( config.has_option("runs_input", "runs_uri") and
+             config.has_option("runs_input", "runs_db") and
+             config.has_option("runs_input", "runs_collection") ):
             try:
-                client = pymongo.MongoClient(config.getstring(
-                    "runs_input", "runs_uri"))              
-                self.db = client[config.getstring(
-                    "runs_input", "runs_db")][config.getstring(
-                        "runs_input", "runs_collection")]
-            except:
+                # Get environment variables for mongo
+                user = os.getenv("MONGO_USER")
+                password = os.getenv("MONGO_PASSWORD")
+                upstr = ""
+                if user is not None and password is not None:
+                    upstr = user + ":" + password + "@"
+                client = pymongo.MongoClient("mongodb://" + upstr + config.get(
+                    "runs_input", "runs_uri"))        
+                database = config.get("runs_input", "runs_db")
+                collection = config.get("runs_input", "runs_collection")
+                self.db = client[database][collection]
+
+            except pymongo.errors.ConnectionFailure as e:
+                print("Error! Didn't connect to runs DB! " + e)
                 _logger.debug("Failed to connect to runs DB. Standalone mode?")
 
         # In case we get a list of runs
         self.runs_to_process = []
-        if config.getlist("runs_input", "process_runs"):
-            self.runs_to_process = config.getlist("runs_input","process_runs")
+        if config.has_option("runs_input", "process_runs"):
+            self.runs_to_process = config.get("runs_input","process_runs")
 
         # Get some query options
         self.detector = None
         self.first_run = None
         self.last_run = None
-        if config.getstring("runs_input", "detector"):
-            self.detector = config.getstring("runs_input", "detector")
-        if config.getstring("runs_input", "first_run"):
-            self.first_run = config.getstring("runs_input", "first_run")
-        if config.getstring("runs_input", "last_run"):
-            self.last_run = config.getstring("runs_input", "last_run")
+        if config.has_option("runs_input", "detector"):
+            self.detector = config.get("runs_input", "detector")
+        if config.has_option("runs_input", "first_run"):
+            self.first_run = config.get("runs_input", "first_run")
+        if config.has_option("runs_input", "last_run"):
+            self.last_run = config.get("runs_input", "last_run")
 
     def get(self):
 
@@ -65,9 +74,10 @@ class RunsGenerator(object):
             query["number"] = {"$gte":self.first_run}
             if self.last_run is not None:
                 query["number"]["$lte"] = self.last_run
-        elif self.last_run isnot None:
+        elif self.last_run is not None:
             query["number"] = {"$lte": self.last_run}
 
+        print(query)
         try:
             cursor = self.db.find(query).sort("_id", -1)
         except:
