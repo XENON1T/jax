@@ -86,3 +86,26 @@ class RunsGenerator(object):
 
         for doc in cursor:
             yield doc['name']
+            
+    def get_run_doc(self, name):
+        
+        if self.db == None:
+            return
+
+        # Make the query. Support for muon veto "just in case"
+        query = {"detector": "tpc", "name": name}
+        if self.detector is not None:
+            query["detector"] = self.detector
+
+        try:
+            cursor = self.db.find(query)
+        except:
+            _logger.error("Tried but failed to get run doc for run " + name)
+            return None
+        
+        if cursor.count() != 1:
+            _logger.error("Tried to get doc for run " + name +
+                          "but cursor returned a count of " + str(cursor.count))
+            return None
+
+        return cursor[0]

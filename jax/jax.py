@@ -23,7 +23,10 @@ import logging
 from jax import __version__
 from jax.runs_generator import RunsGenerator
 from jax.output import MonitorOutput
+from jax.processor import Processor
 from configparser import ConfigParser
+from threading import Thread
+
 
 __author__ = "Daniel Coderre"
 __copyright__ = "Daniel Coderre"
@@ -52,6 +55,13 @@ def parse_args(args):
         type=str,
         default="config/default.ini",
         metavar="config")
+    parser.add_argument(
+        '-j', 
+        type=int,
+        dest="cores",
+        help="Concurrent processing threads",
+        default=1
+    )
     parser.add_argument(
         '-v',
         '--verbose',
@@ -83,21 +93,48 @@ def main(args):
     # Initialize runs list generator, output plugin, processor
     runs = RunsGenerator(configp)
     output = MonitorOutput(configp)
-    #processor = Processor(configp)
+    processor = Processor(configp)
 
     # Loop runs list, insert data
     autorun=False
     if(configp.getboolean("jax", "autoprocess")):
         autorun = configp.getboolean("jax", "autoprocess")
 
+    threads = []
     while(True):
+        
+        # Start up to n processes
+        for i in range(0, args.cores):
+        
+            # Check if we have a lingering thread open
+            if i < len(threads):
+                continue
             
-        for run in runs.get():
-            print(run)
-            #if output_plugin.should_i_process(run):
-            #    processor.Process(output, run)
+            # For each process, loop through runs
+            for run in runs.get():
+                print(run)
+                
+                if output.register_processor(run):
+                    rundoc = runs.get_run_doc(run)
+                    t = (Thread(target = processor.process_run, 
+                                args=(output, rundoc)))
+                    threads.append(t)
+                    t.start()
+                    break
+        
+        # Join threads with 1 second timeout. 
+        # Return only living threads to list.
+        for t in threads:
+            t.join(1)
+        threads = [t for t in threads if t.is_alive()]
+
+
         if not autorun:
             break
+
+    # Loop through threads and join all
+    for t in threads:
+        t.join()
 
     _logger.info("Monitor stopped")
 

@@ -56,6 +56,13 @@ class MonitorOutput(object):
             except pymongo.errors.ConnectionFailure as e:
                 print("Error! Can't connect to waveform db. " + e)
                 _logger.debug("Failed to connect to waveform DB.")
+                
+        self.instance_id = 0
+        if config.has_option("mongo_output", "instance_id"):
+            self.instance_id = config.getint("mongo_output", "instance_id")
+        self.reprocess = False
+        if config.has_option("mongo_output", "reprocess"):
+            self.instance_id = config.getboolean("mongo_output", "reprocess")
 
     def register_processor(self, collection):
         """
@@ -71,16 +78,21 @@ class MonitorOutput(object):
         """
         
         if self.mdb == None:
+            print("No mongo")
             return False
             
-        try:
-            stat = self.mdb[collection].find({"type": "status"})
-        except:
-            print("Can't connect to output DB")
-            return False
+        no_collection = True
+        if collection in self.mdb.collection_names():
+            no_collection = False
+        
+            try:
+                stat = self.mdb[collection].find({"type": "status"})
+            except:
+                print("Can't connect to output DB")
+                return False
         
         # Register it.
-        if ( stat.count() == 0 or 
+        if ( no_collection or stat.count() == 0 or 
              ( self.reprocess and "instance_id" in stat[0]
                and stat[0]["instance_id"] != self.instance_id) ):
             self.mdb[collection].update_one(
@@ -88,7 +100,9 @@ class MonitorOutput(object):
                 {'$set': {'instance_id': self.instance_id,
                           'type': 'status'}
              }, upsert=True)
+            print("Returning true")
             return True
+        print("Found everything but returning false")
         return False
 
     def save_doc(self, event, collection):
