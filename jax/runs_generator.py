@@ -64,7 +64,7 @@ class RunsGenerator(object):
                 yield item
         
         if self.db == None:
-            return
+            return None
 
         # Make the query
         query = {}
@@ -82,7 +82,7 @@ class RunsGenerator(object):
             cursor = self.db.find(query).sort("_id", -1)
         except:
             _logger.error("Tried but failed to query runs DB")
-            return
+            return None
 
         for doc in cursor:
             yield doc['name']
@@ -105,7 +105,8 @@ class RunsGenerator(object):
         
         if cursor.count() != 1:
             _logger.error("Tried to get doc for run " + name +
-                          "but cursor returned a count of " + str(cursor.count))
+                          "but cursor returned a count of " + 
+                          str(cursor.count()))
             return None
 
         return cursor[0]

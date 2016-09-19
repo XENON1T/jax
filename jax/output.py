@@ -51,7 +51,10 @@ class MonitorOutput(object):
                 client = pymongo.MongoClient("mongodb://" + upstr + config.get(
                     "mongo_output", "waveform_uri"))
                 database = config.get("mongo_output", "waveform_db")
-                self.mdb = client[database]
+                print("mongodb://" + upstr + config.get(
+                    "mongo_output", "waveform_uri"))
+                print(database)
+                self.wdb = client[database]
 
             except pymongo.errors.ConnectionFailure as e:
                 print("Error! Can't connect to waveform db. " + e)
@@ -82,6 +85,8 @@ class MonitorOutput(object):
             return False
             
         no_collection = True
+        #print("Monitor db has these collections: ")
+        #print(self.mdb.collection_names())
         if collection in self.mdb.collection_names():
             no_collection = False
         
@@ -100,14 +105,13 @@ class MonitorOutput(object):
                 {'$set': {'instance_id': self.instance_id,
                           'type': 'status'}
              }, upsert=True)
-            print("Returning true")
-            return True
-        print("Found everything but returning false")
+            return True            
         return False
 
     def save_doc(self, event, collection):
 
         if self.mdb == None:
+            print("No monitor db")
             return
 
         # Put it into mongo. Simple stuff for now                                  
@@ -124,7 +128,6 @@ class MonitorOutput(object):
             "y": None,
             "time": None,
             "interactions": None,
-            "prescale": prescale
         }
         insert_doc['ns1'] = len(event.s1s())
         insert_doc['ns2'] = len(event.s2s())

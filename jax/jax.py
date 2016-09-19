@@ -111,11 +111,11 @@ def main(args):
                 continue
             
             # For each process, loop through runs
-            for run in runs.get():
-                print(run)
+            for run in runs.get():                
                 
                 if output.register_processor(run):
                     rundoc = runs.get_run_doc(run)
+                    print("Processing run " + rundoc['name'])
                     t = (Thread(target = processor.process_run, 
                                 args=(output, rundoc)))
                     threads.append(t)
@@ -128,8 +128,7 @@ def main(args):
             t.join(1)
         threads = [t for t in threads if t.is_alive()]
 
-
-        if not autorun:
+        if len(threads)==0 and not autorun:
             break
 
     # Loop through threads and join all

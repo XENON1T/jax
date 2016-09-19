@@ -92,31 +92,42 @@ class Processor(object):
             to_process = range(current_event, last_event, self.raw_prescale)
             
             # Do the processing using pax
-            pax_config = {"pax":
-                          {
-                              'output':'Dummy.DummyOutput',
-                              'encoder_plugin':     None,
-                              'pre_output': [],
-                              'logging_level': 'ERROR',
-                              'events_to_process': to_process,
-                              'input_name': os.path.join(self.search_path,
-                                                         run_name)
-                          }
+            pax_config = {
+                "pax":
+                {                
+                    'output': 'Dummy.DummyOutput',
+                    'pre_output': [],
+                    'encoder_plugin':     None,
+                    'logging_level': 'ERROR',
+                    'events_to_process': to_process,
+                    'input_name': os.path.join(self.search_path,
+                                               run_name)
+                },
+            "MongoDB":
+                {
+                    "user": os.getenv("PAX_USER"),
+                    "password": os.getenv("PAX_PASSWORD"),
+                    "host": "gw",
+                    "port": 27017,
+                    "database": "run"
+                },
             }
-            thispax = core.Processor(config_names="XENON1T", config_dict=pax_config)
+            thispax = core.Processor(config_names="XENON1T", 
+                                     config_dict=pax_config)
             
             # Loop through processed events
             for event in thispax.get_events():
-                output.save_doc(event, run_name)
+                processed = thispax.process_event(event)
+                output.save_doc(processed, run_name)
                 
                 if saved_events % self.waveform_prescale == 0:
-                    output.save_waveform(event, run_name)
+                    output.save_waveform(processed, run_name)
             
                 saved_events+=1
             
             # Set current event for start of next file
             current_event = last_event + 1
-            
+        print("Processed " + saved_events + " events")
         return saved_events
         
     def check_finished(self, run_doc, counter, current_event):
