@@ -9,6 +9,9 @@ import logging
 _logger = logging.getLogger(__name__)
 import pymongo
 import os
+import json
+
+import sys
 
 class MonitorOutput(object):
     """
@@ -23,8 +26,8 @@ class MonitorOutput(object):
              config.has_option("mongo_output", "monitor_db") ):
             try:
                 # Get environment variables for mongo
-                user = os.getenv("MONGO_USER")
-                password = os.getenv("MONGO_PASSWORD")
+                user = os.getenv("MONITOR_USER")
+                password = os.getenv("MONITOR_PASSWORD")
                 upstr = ""
                 if user is not None and password is not None:
                     upstr = user + ":" + password + "@"
@@ -34,7 +37,7 @@ class MonitorOutput(object):
                 self.mdb = client[database]
 
             except pymongo.errors.ConnectionFailure as e:
-                print("Error! Can't connect to monitor db. " + e)
+                print("Error! Can't connect to monitor db. ")
                 _logger.debug("Failed to connect to monitor DB.")
 
         # Declare waveform db
@@ -43,8 +46,8 @@ class MonitorOutput(object):
              config.has_option("mongo_output", "waveform_db") ):
             try:
                 # Get environment variables for mongo
-                user = os.getenv("MONGO_USER")
-                password = os.getenv("MONGO_PASSWORD")
+                user = os.getenv("MONITOR_USER")
+                password = os.getenv("MONITOR_PASSWORD")
                 upstr = ""
                 if user is not None and password is not None:
                     upstr = user + ":" + password + "@"
@@ -57,7 +60,7 @@ class MonitorOutput(object):
                 self.wdb = client[database]
 
             except pymongo.errors.ConnectionFailure as e:
-                print("Error! Can't connect to waveform db. " + e)
+                print("Error! Can't connect to waveform db. ")
                 _logger.debug("Failed to connect to waveform DB.")
                 
         self.instance_id = 0
@@ -65,7 +68,10 @@ class MonitorOutput(object):
             self.instance_id = config.getint("mongo_output", "instance_id")
         self.reprocess = False
         if config.has_option("mongo_output", "reprocess"):
-            self.instance_id = config.getboolean("mongo_output", "reprocess")
+            self.reprocess = config.getboolean("mongo_output", "reprocess")
+        self.finish = False
+        if config.has_option("mongo_output", "finish"):
+            self.finish = config.getboolean("mongo_output", "finish")
 
     def register_processor(self, collection):
         """
@@ -97,19 +103,52 @@ class MonitorOutput(object):
                 return False
         
         # Register it.
-        if ( no_collection or stat.count() == 0 or 
+        if ( 
+                # New collection, no status
+                no_collection or stat.count() == 0 or 
+            
+                # Reprocess runs from other instances
              ( self.reprocess and "instance_id" in stat[0]
-               and stat[0]["instance_id"] != self.instance_id) ):
-            self.mdb[collection].update_one(
-                {'type': 'status'},
-                {'$set': {'instance_id': self.instance_id,
-                          'type': 'status'}
-             }, upsert=True)
+               and stat[0]["instance_id"] != self.instance_id) or
+
+                # Finish unfinished runs, but don't reprocess finished runs
+             ( self.finish and "instance_id" in stat[0] 
+               and stat[0]['instance_id'] != self.instance_id and
+               ( 'finished' not in stat[0] or stat[0]['finished']==False))):
+            self.mdb[collection].drop()
+            self.mdb[collection].insert_one(
+                {'type': 'status',
+                 'instance_id': self.instance_id,
+                 'finished': False}
+            )
             return True            
         return False
+        
+    def close(self, collection, nevents):
+        """
+        Close the run. Tell DB you're done and how many events were processed
+        """
+        if self.mdb == None:
+            print("output.close: no mongo")
+            return False
+
+        if collection not in self.mdb.collection_names():
+            print("output.close: collection not found")
+            
+        try:
+            self.mdb[collection].update_one(
+                {'type': 'status'},
+                {'$set': {'finished': True,
+                          'events': nevents}
+             })
+        except:
+            print("output.close: error updating status doc")
+            return 
+        return
+
 
     def save_doc(self, event, collection):
-
+        
         if self.mdb == None:
             print("No monitor db")
             return
@@ -145,8 +184,8 @@ class MonitorOutput(object):
             insert_doc['dt'] = event.interactions[0].drift_time
             insert_doc['x'] = event.interactions[0].x
             insert_doc['y'] = event.interactions[0].y
-        #print(insert_doc)                                   
-
+        print(insert_doc)                                   
+        print(collection)
         try:
             self.mdb[collection].insert_one(insert_doc)
         except:
@@ -156,15 +195,16 @@ class MonitorOutput(object):
     def save_waveform(self, event, collection):
         
         if self.wdb == None:
-            return
+            return False
 
         # Compress the event to make larger events fit in BSON
-        smaller = self.CompressEvent(loads(event.to_json()))
+        smaller = self.CompressEvent(json.loads(event.to_json()))
         try:
             self.wdb['waveforms'].insert_one(smaller)
         except Exception as e:
-            print("Error inserting waveform. Maybe it's too large. " + e)
-        return
+            print("Error inserting waveform. Maybe it's too large. ")
+            return False
+        return True
 
     def CompressEvent(self, event):
 
@@ -176,7 +216,19 @@ class MonitorOutput(object):
         Also removes fields
         """
         
+        print("Size before compression = " + str(sys.getsizeof(json.dumps(event))))
+
+        # First compress the waveform
+        ret_event = {}
+        detectors = ['tpc']
+        names = ['tpc']
         for x in range(0, len(event['sum_waveforms'])):
+            if event['sum_waveforms'][x]['detector'] == 'tpc':
+                print("Name is " + event['sum_waveforms'][x]['name'])
+                print("Waveform for TPC is " + str(len(event['sum_waveforms'][x]['samples'])))
+            if ( event['sum_waveforms'][x]['detector'] not in detectors or
+                 event['sum_waveforms'][x]['name'] not in names ):
+                continue
             waveform = event['sum_waveforms'][x]['samples']
             zeros = 0
             ret = []
@@ -199,5 +251,34 @@ class MonitorOutput(object):
         # Unfortunately we also have to remove the pulses 
         # or some events are huuuuuuuuuge-uh
         del event['pulses']
-        return event
+        print("Size after compression = " + str(sys.getsizeof(json.dumps(event))))
+
+        ret_event['sum_waveforms'] = []
+        for waveform in event['sum_waveforms']:
+            if ( waveform['detector'] not in detectors or
+                 waveform['name'] not in names ):
+                continue
+            ret_event['sum_waveforms'].append(waveform)
+
+
+        # Now compress each peak
+        ret_event['peaks'] = []
+        peak_vars = ['area', 'area_fraction_top', 'area_per_channel',
+                     'center_time', 'index_of_maximum', 'left', 
+                     'n_contributing_channels', 'right', 'type']
+        for peak in event['peaks']:
+            new_peak = {}
+            for var in peak_vars:
+                new_peak[var] = peak[var]
+            ret_event['peaks'].append(new_peak)
+        
+        # Now hits
+        ret_event['all_hits'] = event['all_hits']
+
+        # Metadata
+        for value in ['dataset_name', 'event_number', 'start_time', 'stop_time']:
+            ret_event[value] = event[value]
+        print("Size of ret event " + str(sys.getsizeof(json.dumps(ret_event))))
+        print("Breakdown. Waveforms: "+str(sys.getsizeof(json.dumps(ret_event['sum_waveforms']))) + " Hits: " + str(sys.getsizeof(json.dumps(ret_event['all_hits']))) + " Peaks: " + str(sys.getsizeof(json.dumps(ret_event['peaks']))))
+        return ret_event
     

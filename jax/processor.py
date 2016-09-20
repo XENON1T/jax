@@ -105,8 +105,8 @@ class Processor(object):
                 },
             "MongoDB":
                 {
-                    "user": os.getenv("PAX_USER"),
-                    "password": os.getenv("PAX_PASSWORD"),
+                    "user": os.getenv("MONGO_USER"),
+                    "password": os.getenv("MONGO_PASSWORD"),
                     "host": "gw",
                     "port": 27017,
                     "database": "run"
@@ -116,17 +116,24 @@ class Processor(object):
                                      config_dict=pax_config)
             
             # Loop through processed events
+            saveNext = False
             for event in thispax.get_events():
                 processed = thispax.process_event(event)
                 output.save_doc(processed, run_name)
                 
-                if saved_events % self.waveform_prescale == 0:
-                    output.save_waveform(processed, run_name)
+                if ( saveNext or self.waveform_prescale > 0 and 
+                     saved_events % self.waveform_prescale == 0 ):
+                    if not output.save_waveform(processed, run_name):
+                        saveNext = True
+                    else:
+                        saveNext = False
             
                 saved_events+=1
             
             # Set current event for start of next file
             current_event = last_event + 1
+        
+        output.close(run_name, saved_events)
         print("Processed " + saved_events + " events")
         return saved_events
         
@@ -139,7 +146,7 @@ class Processor(object):
           (c) if we hit a predefined timeout waiting for processing, then
               we ARE done
         """
-
+        
         # Predefined timeout
         if counter > self.file_timeout_counter:
             print("COUNTER")

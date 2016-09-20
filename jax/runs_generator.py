@@ -9,6 +9,7 @@ import logging
 _logger = logging.getLogger(__name__)
 import pymongo
 import os
+import json
 
 class RunsGenerator(object):
     """
@@ -43,7 +44,8 @@ class RunsGenerator(object):
         # In case we get a list of runs
         self.runs_to_process = []
         if config.has_option("runs_input", "process_runs"):
-            self.runs_to_process = config.get("runs_input","process_runs")
+            self.runs_to_process = json.loads(
+                config.get("runs_input","process_runs"))
 
         # Get some query options
         self.detector = None
@@ -59,7 +61,7 @@ class RunsGenerator(object):
     def get(self):
 
         # If user defined runs_to_process this is easy
-        if len(self.runs_to_process) > 0:
+        if len(self.runs_to_process) > 0:            
             for item in self.runs_to_process:
                 yield item
         

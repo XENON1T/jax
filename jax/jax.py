@@ -25,8 +25,9 @@ from jax.runs_generator import RunsGenerator
 from jax.output import MonitorOutput
 from jax.processor import Processor
 from configparser import ConfigParser
-from threading import Thread
+from multiprocessing import Process
 
+import time
 
 __author__ = "Daniel Coderre"
 __copyright__ = "Daniel Coderre"
@@ -116,26 +117,40 @@ def main(args):
                 if output.register_processor(run):
                     rundoc = runs.get_run_doc(run)
                     print("Processing run " + rundoc['name'])
-                    t = (Thread(target = processor.process_run, 
-                                args=(output, rundoc)))
+                    t = (Process(target = thread_process, 
+                                args=(configp, rundoc)))
                     threads.append(t)
+                    print("Appended new thread. ("+str(len(threads))+")")
                     t.start()
                     break
         
         # Join threads with 1 second timeout. 
-        # Return only living threads to list.
+        # If we're autorunning, return only living threads to list,
+        # allowing new threads to be spawned if one finishes
         for t in threads:
             t.join(1)
-        threads = [t for t in threads if t.is_alive()]
-
+        ntb = len(threads)
+        if autorun:
+            threads = [t for t in threads if t.is_alive()]
+        nta = len(threads)
         if len(threads)==0 and not autorun:
             break
+        if ntb != nta:
+            print("Killed " + str(nta-ntb) + " threads")
+        print("Sleeping")
+        time.sleep(5)
 
     # Loop through threads and join all
+    print("End of program. Joining threads")
     for t in threads:
         t.join()
 
     _logger.info("Monitor stopped")
+
+def thread_process(config, rundoc):
+    output = MonitorOutput(config)
+    processor = Processor(config)
+    return processor.process_run(output, rundoc)
 
 
 def run():
