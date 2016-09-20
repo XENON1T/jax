@@ -20,9 +20,9 @@ Description
 ===========
 
 Currently jax supports raw data input only. A config file must be specified on 
-the command line. Run jax like this:
+the command line. Run jax like this::
 
-jaxer --config=<path_to_config> -j8
+  jaxer --config=<path_to_config> -j8
 
 And jax will start processing with 8 cores. 
 
