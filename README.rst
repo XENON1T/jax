@@ -8,9 +8,13 @@ Jax is the backend for the online monitor. It's also a cheesy snack food.
 Installation
 ============
 
-pip install -r requirements.txt
-You also need pax. See xenon1t.github.io/pax
-python setup.py install
+Run the following::
+
+  pip install -r requirements.txt
+  # You also need pax. See xenon1t.github.io/pax
+  python setup.py install
+
+
 
 Description
 ===========
