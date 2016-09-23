@@ -51,7 +51,7 @@ class Processor(object):
         We want to know if the raw/processed data for this run is
         even there. Otherwise no need to start. This should be easy.
         """
-        search_path = os.path.join(self.data_path, run_doc['name'])
+        search_path = os.path.join(self.search_path, run_doc['name'])
         search_path += '*' #because of .root
         if not glob.glob(search_path):
             return False
@@ -192,10 +192,12 @@ class Processor(object):
         Put each and every event into our reduced DB
         """
         
-        filename = os.path.join( self.search_path, run_doc['name']))
+        print("Entering process processed")
+
+        filename = os.path.join( self.search_path, run_doc['name'])
         filename += ".root"
         if not os.path.exists(filename):
-            log.error("That ROOT file doesn't exist."
+            _logger.error("That ROOT file doesn't exist."
                       "Actually you should not have gotten this far.")
             return -1
 
@@ -207,25 +209,25 @@ class Processor(object):
         try:
             load_pax_event_class_from_root(filename)
         except MaybeOldFormatException:
-            log.error("There was a problem loading the ROOT class from your file."
+            _logger.error("There was a problem loading the ROOT class from your file."
                       "I guess just give up. Or use a new ROOT file with the "
                       "class embedded. Sorry.")
             return -1
 
 
         tfile = ROOT.TFile(filename)
-        n_events = tfile.GetEntries()
-        tree = tfile.get("tree")
+        tree = tfile.Get("tree")
+        n_events = tree.GetEntries()
 
         # Loop it
         saved=0
         for i in range(0, n_events):
-            t.GetEntry(i)
-            event = t.events
+            tree.GetEntry(i)
+            event = tree.events
             try:
                 output.save_doc(event, run_doc['name'])
             except:
-                log.error("Couldn't save processed event to output. Quitting.")
+                _logger.error("Couldn't save processed event to output. Quitting.")
                 return -1
             saved +=1
 

@@ -101,7 +101,12 @@ class MonitorOutput(object):
             except:
                 print("Can't connect to output DB")
                 return False
-        
+
+        # If this is a raw thread and we find a processed file skip
+        if ( not no_collection and stat.count() > 0 and mode == "raw" and 
+             "mode" in stat[0] and stat[0]["mode"]=="processed" ):
+            return False
+
         # Register it.
         if ( 
                 # New collection, no status. Definitely process
@@ -110,7 +115,8 @@ class MonitorOutput(object):
                 # This is processed data. We only had raw. Eat it up.
                 (mode == "processed" and ( "mode" not in stat[0] or 
                                            ("mode" in stat[0] and 
-                                            stat[0]["mode"]=="raw" )) or
+                                            stat[0]["mode"]=="raw"))) or
+
                 
                 # Reprocess runs from other instances. 
              ( self.reprocess and "instance_id" in stat[0]
@@ -181,6 +187,28 @@ class MonitorOutput(object):
             "time": None,
             "interactions": None,
         }
+
+        # This is a bit nasty. Here's the thing. The pax event class 
+        # is different if using ROOT output or if using the python
+        # native version. 
+        try:
+            self.FillDocPaxOutput(insert_doc, event)
+        except:
+            # Must be ROOT
+            try:
+                self.FillDocROOTOutput(insert_doc, event)
+            except Exception as e:
+                _logger.error("Couldn't read event class in either pax native "
+                              "or ROOT form. Failing. " + str(e))
+                return
+        print(insert_doc)
+        try:
+            self.mdb[collection].insert_one(insert_doc)
+        except:
+            print("Failed to insert document!")
+        return
+
+    def FillDocPaxOutput(self, insert_doc, event):
         insert_doc['ns1'] = len(event.s1s())
         insert_doc['ns2'] = len(event.s2s())
         insert_doc['time'] = event.start_time
@@ -197,13 +225,24 @@ class MonitorOutput(object):
             insert_doc['dt'] = event.interactions[0].drift_time
             insert_doc['x'] = event.interactions[0].x
             insert_doc['y'] = event.interactions[0].y
-        print(insert_doc)                                   
-        print(collection)
-        try:
-            self.mdb[collection].insert_one(insert_doc)
-        except:
-            print("Failed to insert document!")
-        return
+
+    def FillDocROOTOutput(self, insert_doc, event):
+        insert_doc['ns1'] = len(event.s1s)
+        insert_doc['ns2'] = len(event.s2s)
+        insert_doc['time'] = event.start_time
+        if len(event.s1s)>0:
+            insert_doc['s1'] = event.peaks[event.s1s[0]].area
+            if len(event.s1s)>1:
+                insert_doc['largest_other_s1'] = event.peaks[event.s1s[1]].area
+        if len(event.s2s)>0:
+            insert_doc['s2'] = event.peaks[event.s2s[0]].area
+            if len(event.s2s)>1:
+                insert_doc['largest_other_s2'] = event.peaks[event.s2s[1]].area
+        if len(event.interactions)>0:
+            insert_doc['interactions'] = len(event.interactions)
+            insert_doc['dt'] = event.interactions[0].drift_time
+            insert_doc['x'] = event.interactions[0].x
+            insert_doc['y'] = event.interactions[0].y
 
     def save_waveform(self, event, collection):
         
@@ -218,7 +257,7 @@ class MonitorOutput(object):
             print("Error inserting waveform. Maybe it's too large. ")
             return False
         return True
-
+    
     def CompressEvent(self, event):
 
         """ 

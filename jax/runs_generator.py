@@ -63,7 +63,7 @@ class RunsGenerator(object):
         # If user defined runs_to_process this is easy
         if len(self.runs_to_process) > 0:            
             for item in self.runs_to_process:
-                if processor.check_available(item):
+                if processor.check_available({"name": item}):
                     yield item
         
         if self.db == None:
@@ -88,7 +88,7 @@ class RunsGenerator(object):
             return None
 
         for doc in cursor:
-            if processor.check_available(doc['name']):
+            if processor.check_available(doc):
                 yield doc['name']
             
     def get_run_doc(self, name):
