@@ -73,7 +73,7 @@ class MonitorOutput(object):
         if config.has_option("mongo_output", "finish"):
             self.finish = config.getboolean("mongo_output", "finish")
 
-    def register_processor(self, collection):
+    def register_processor(self, collection, mode, prescale):
         """
         Looks for a status document. The status document looks like:
         {
@@ -104,10 +104,15 @@ class MonitorOutput(object):
         
         # Register it.
         if ( 
-                # New collection, no status
+                # New collection, no status. Definitely process
                 no_collection or stat.count() == 0 or 
-            
-                # Reprocess runs from other instances
+                
+                # This is processed data. We only had raw. Eat it up.
+                (mode == "processed" and ( "mode" not in stat[0] or 
+                                           ("mode" in stat[0] and 
+                                            stat[0]["mode"]=="raw" )) or
+                
+                # Reprocess runs from other instances. 
              ( self.reprocess and "instance_id" in stat[0]
                and stat[0]["instance_id"] != self.instance_id) or
 
@@ -115,12 +120,20 @@ class MonitorOutput(object):
              ( self.finish and "instance_id" in stat[0] 
                and stat[0]['instance_id'] != self.instance_id and
                ( 'finished' not in stat[0] or stat[0]['finished']==False))):
+
+            # "Finish" doesn't actually mean finish. It means start again.
             self.mdb[collection].drop()
-            self.mdb[collection].insert_one(
-                {'type': 'status',
-                 'instance_id': self.instance_id,
-                 'finished': False}
-            )
+            status_doc = {
+                'type': 'status',
+                'instance_id': self.instance_id,
+                'finished': False,
+                'mode': mode,
+                'prescale': 1
+            }
+            if mode == "raw":
+                status_doc['prescale'] = prescale
+
+            self.mdb[collection].insert_one(status_doc)
             return True            
         return False
         
@@ -200,7 +213,7 @@ class MonitorOutput(object):
         # Compress the event to make larger events fit in BSON
         smaller = self.CompressEvent(json.loads(event.to_json()))
         try:
-            self.wdb['waveforms'].insert_one(smaller)
+            self.wdb[collection].insert_one(smaller)
         except Exception as e:
             print("Error inserting waveform. Maybe it's too large. ")
             return False

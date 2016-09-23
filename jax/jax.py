@@ -1,19 +1,14 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-This is a skeleton file that can serve as a starting point for a Python
-console script. To run this script uncomment the following line in the
-entry_points section in setup.cfg:
-
-    console_scripts =
-     fibonacci = jax.skeleton:run
-
-Then run `python setup.py install` which will install the command `fibonacci`
-inside your current environment.
-Besides console scripts, the header (i.e. until _logger...) of this file can
-also be used as template for Python modules.
-
-Note: This skeleton file can be safely removed if not needed!
+This is a converter from either XENON1T raw data (BSON) or XENON1T
+processed data (ROOT) to a reduced output suitable for serving on the
+web. For raw data this program facilitates processing via pax.
+For processed data it simply unpacks and loops the ROOT file. 
+The initial use is for the online monitor, for which we have a flat
+BSON output. You could very easily repurpose the output class to store 
+the data in any format you want using any technology for which there is 
+a python interface.
 """
 
 import argparse
@@ -112,9 +107,10 @@ def main(args):
                 continue
             
             # For each process, loop through runs
-            for run in runs.get():                
+            for run in runs.get(processor):                
                 
-                if output.register_processor(run):
+                if output.register_processor(run, processor.get_mode(),
+                                             processor.get_prescale()):
                     rundoc = runs.get_run_doc(run)
                     print("Processing run " + rundoc['name'])
                     t = (Process(target = thread_process, 

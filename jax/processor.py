@@ -41,6 +41,22 @@ class Processor(object):
         if config.has_option("jax", "file_timeout_counter"):
             self.file_timeout_counter = config.getint("jax", "file_timeout_counter")
 
+    def get_mode(self):
+        return self.input_type
+    def get_prescale(self):
+        return self.raw_prescale
+    
+    def check_available(self, run_doc):
+        """
+        We want to know if the raw/processed data for this run is
+        even there. Otherwise no need to start. This should be easy.
+        """
+        search_path = os.path.join(self.data_path, run_doc['name'])
+        search_path += '*' #because of .root
+        if not glob.glob(search_path):
+            return False
+        return True
+
     def process_run(self, output, run_doc):
         """
         Processes a run. If it's raw data this means processing a prescaled
@@ -171,8 +187,49 @@ class Processor(object):
         return False
 
     def process_processed(self, output, run_doc):
-        #to do
-        return -1
+        """
+        If we already processed the data then let's not waste CPU cycles 
+        Put each and every event into our reduced DB
+        """
+        
+        filename = os.path.join( self.search_path, run_doc['name']))
+        filename += ".root"
+        if not os.path.exists(filename):
+            log.error("That ROOT file doesn't exist."
+                      "Actually you should not have gotten this far.")
+            return -1
+
+        # If you have trouble with this part of the code please contact
+        # somebody who thought using ROOT was a good idea.
+        import ROOT
+        from pax.plugins.io.ROOTClass import load_pax_event_class_from_root
+
+        try:
+            load_pax_event_class_from_root(filename)
+        except MaybeOldFormatException:
+            log.error("There was a problem loading the ROOT class from your file."
+                      "I guess just give up. Or use a new ROOT file with the "
+                      "class embedded. Sorry.")
+            return -1
+
+
+        tfile = ROOT.TFile(filename)
+        n_events = tfile.GetEntries()
+        tree = tfile.get("tree")
+
+        # Loop it
+        saved=0
+        for i in range(0, n_events):
+            t.GetEntry(i)
+            event = t.events
+            try:
+                output.save_doc(event, run_doc['name'])
+            except:
+                log.error("Couldn't save processed event to output. Quitting.")
+                return -1
+            saved +=1
+
+        return saved
 
     
     

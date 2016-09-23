@@ -58,12 +58,13 @@ class RunsGenerator(object):
         if config.has_option("runs_input", "last_run"):
             self.last_run = config.get("runs_input", "last_run")
 
-    def get(self):
+    def get(self, processor):
 
         # If user defined runs_to_process this is easy
         if len(self.runs_to_process) > 0:            
             for item in self.runs_to_process:
-                yield item
+                if processor.check_available(item):
+                    yield item
         
         if self.db == None:
             return None
@@ -87,7 +88,8 @@ class RunsGenerator(object):
             return None
 
         for doc in cursor:
-            yield doc['name']
+            if processor.check_available(doc['name']):
+                yield doc['name']
             
     def get_run_doc(self, name):
         
