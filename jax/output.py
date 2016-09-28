@@ -37,7 +37,6 @@ class MonitorOutput(object):
                 self.mdb = client[database]
 
             except pymongo.errors.ConnectionFailure as e:
-                print("Error! Can't connect to monitor db. ")
                 _logger.debug("Failed to connect to monitor DB.")
 
         # Declare waveform db
@@ -54,13 +53,9 @@ class MonitorOutput(object):
                 client = pymongo.MongoClient("mongodb://" + upstr + config.get(
                     "mongo_output", "waveform_uri"))
                 database = config.get("mongo_output", "waveform_db")
-                print("mongodb://" + upstr + config.get(
-                    "mongo_output", "waveform_uri"))
-                print(database)
                 self.wdb = client[database]
 
             except pymongo.errors.ConnectionFailure as e:
-                print("Error! Can't connect to waveform db. ")
                 _logger.debug("Failed to connect to waveform DB.")
                 
         self.instance_id = 0
@@ -91,8 +86,6 @@ class MonitorOutput(object):
             return False
             
         no_collection = True
-        #print("Monitor db has these collections: ")
-        #print(self.mdb.collection_names())
         if collection in self.mdb.collection_names():
             no_collection = False
         
@@ -148,11 +141,11 @@ class MonitorOutput(object):
         Close the run. Tell DB you're done and how many events were processed
         """
         if self.mdb == None:
-            print("output.close: no mongo")
+            _logger.error("output.close: no mongo")
             return False
 
         if collection not in self.mdb.collection_names():
-            print("output.close: collection not found")
+            _logger.error("output.close: collection not found")
             
         try:
             self.mdb[collection].update_one(
@@ -161,7 +154,7 @@ class MonitorOutput(object):
                           'events': nevents}
              })
         except:
-            print("output.close: error updating status doc")
+            _logger.error("output.close: error updating status doc")
             return 
         return
 
@@ -169,22 +162,43 @@ class MonitorOutput(object):
     def save_doc(self, event, collection):
         
         if self.mdb == None:
-            print("No monitor db")
+            _logger.error("No monitor db")
             return
 
         # Put it into mongo. Simple stuff for now                                  
         insert_doc = {
             "type": "data",
+            "event_number": None,
+            "cs1": None,
+            "cs2": None,
             "s1": None,
             "s2": None,
+            "s1_range_50p_area": None,
+            "s2_range_50p_area": None,
+            "s1_area_fraction_top": None,
+            "s2_area_fraction_top": None,
+            "s1_n_hits": None,
+            "s2_n_hits": None,
+            "s1_hit_time_mean": None,
+            "s2_hit_time_mean": None,
+            "event_time": None,
+            "z": None,            
             "largest_other_s1": None,
             "largest_other_s2": None,
+            "largest_other_s1_time": None,
+            "largest_other_s2_time": None,
+            "s1_n_contributing_channels": None,
+            "s2_n_contributing_channels": None,
+            "s1_n_saturated_channels": None,
+            "s2_n_saturated_channels": None, 
+            "event_length": None,
+            "largest_other_s1_hit_time_mean": None,
+            "largest_other_s2_hit_time_mean": None,
             "ns1": None,
             "ns2": None,
             "dt": None,
             "x": None,
             "y": None,
-            "time": None,
             "interactions": None,
         }
 
@@ -193,56 +207,98 @@ class MonitorOutput(object):
         # native version. 
         try:
             self.FillDocPaxOutput(insert_doc, event)
-        except:
-            # Must be ROOT
-            try:
-                self.FillDocROOTOutput(insert_doc, event)
-            except Exception as e:
-                _logger.error("Couldn't read event class in either pax native "
-                              "or ROOT form. Failing. " + str(e))
-                return
-        print(insert_doc)
+        except Exception as e:
+            _logger.error("Couldn't read event class in either pax native "
+                          "or ROOT form. Failing. " + str(e))
+            return                
         try:
             self.mdb[collection].insert_one(insert_doc)
-        except:
-            print("Failed to insert document!")
+        except Exception as e:
+            _logger.error("Failed to insert document! " +str(e))
         return
 
     def FillDocPaxOutput(self, insert_doc, event):
-        insert_doc['ns1'] = len(event.s1s())
-        insert_doc['ns2'] = len(event.s2s())
-        insert_doc['time'] = event.start_time
-        if len(event.s1s())>0:
-            insert_doc['s1'] = event.s1s()[0].area
-        if len(event.s1s())>1:
-            insert_doc['largest_other_s1'] = event.s1s()[1].area
-        if len(event.s2s())>0:
-            insert_doc['s2'] = event.s2s()[0].area
-        if len(event.s2s())>1:
-            insert_doc['largest_other_s2'] = event.s2s()[1].area
-        if len(event.interactions)>0:
-            insert_doc['interactions'] = len(event.interactions)
-            insert_doc['dt'] = event.interactions[0].drift_time
-            insert_doc['x'] = event.interactions[0].x
-            insert_doc['y'] = event.interactions[0].y
 
-    def FillDocROOTOutput(self, insert_doc, event):
-        insert_doc['ns1'] = len(event.s1s)
-        insert_doc['ns2'] = len(event.s2s)
+        # Nasty things to maintain ROOT and python-native compatibility
+        # Don't ask, just DO.
+        try:
+            s1s = event.s1s()
+            s2s = event.s2s()
+            peaks = event.peaks
+            interactions = event.interactions
+        except Exception as e:            
+            s1s = event.s1s
+            s2s = event.s2s
+            peaks = event.peaks
+            interactions = event.interactions
+
+        insert_doc['ns1'] = len(s1s)
+        insert_doc['ns2'] = len(s2s)
         insert_doc['time'] = event.start_time
-        if len(event.s1s)>0:
-            insert_doc['s1'] = event.peaks[event.s1s[0]].area
-            if len(event.s1s)>1:
-                insert_doc['largest_other_s1'] = event.peaks[event.s1s[1]].area
-        if len(event.s2s)>0:
-            insert_doc['s2'] = event.peaks[event.s2s[0]].area
-            if len(event.s2s)>1:
-                insert_doc['largest_other_s2'] = event.peaks[event.s2s[1]].area
-        if len(event.interactions)>0:
-            insert_doc['interactions'] = len(event.interactions)
-            insert_doc['dt'] = event.interactions[0].drift_time
-            insert_doc['x'] = event.interactions[0].x
-            insert_doc['y'] = event.interactions[0].y
+        insert_doc['event_number'] = event.event_number
+        insert_doc['event_length'] = event.stop_time - event.start_time
+        insert_doc['interactions'] = len(interactions)
+        if len(interactions) > 0:
+            interaction = interactions[0]
+            s1 = peaks[interaction.s1]
+            s2 = peaks[interaction.s2]
+            
+            insert_doc['s1'] = s1.area
+            insert_doc['s2'] = s2.area
+            insert_doc['cs1'] = insert_doc['s1']*interaction.s1_area_correction
+            insert_doc['cs2'] = insert_doc['s2']*interaction.s2_area_correction
+            insert_doc['x'] = interaction.x
+            insert_doc['y'] = interaction.y
+            insert_doc['z'] = interaction.z
+            insert_doc['dt'] = interaction.drift_time
+            insert_doc['s1_range_50p_area'] = s1.range_area_decile[5]
+            insert_doc['s2_range_50p_area'] = s2.range_area_decile[5]
+            insert_doc['s1_hit_time_mean'] = s1.hit_time_mean
+            insert_doc['s2_hit_time_mean'] = s2.hit_time_mean
+            insert_doc['s1_area_fraction_top'] = s1.area_fraction_top
+            insert_doc['s2_area_fraction_top'] = s2.area_fraction_top
+            insert_doc['s1_n_hits'] = s1.n_hits
+            insert_doc['s2_n_hits'] = s2.n_hits
+            insert_doc['s2_n_contributing_channels'] = s1.n_contributing_channels
+            insert_doc['s2_n_contributing_channels'] = s2.n_contributing_channels
+            insert_doc['s1_n_saturated_channels'] = s1.n_saturated_channels
+            insert_doc['s2_n_saturated_channels'] = s2.n_saturated_channels
+            
+        # Now we want the largest other s1 and largest other s1
+        los1 = None
+        alos1 = 0
+        for s1 in s1s:
+            try:
+                if peaks[s1].area > alos1:
+                    alos1 = peaks[s1].area
+                    los1 = peaks[s1]
+            except:
+                if s1.area > alos1:
+                    alos1 = s1.area
+                    los1 = s1
+        los2 = None
+        alos2 = 0
+        for s2 in s2s:
+            try:
+                if peaks[s2].area > alos2:
+                    alos2 = peaks[s2].area
+                    los2 = peaks[s2]
+            except:
+                if s2.area > alos2:
+                    alos2 = s2.area
+                    los2 = s2
+
+        if los1 is not None:
+            insert_doc['largest_other_s1'] = los1.area
+            insert_doc['largest_other_s1_range_50p_area'] = los1.range_area_decile[5]
+            insert_doc['largest_other_s1_hit_time_mean'] = los1.hit_time_mean
+            insert_doc['largest_other_s1_n_contributing_channels'] = los1.n_contributing_channels
+        if los2 is not None:
+            insert_doc['largest_other_s2'] = los2.area
+            insert_doc['largest_other_s2_range_50p_area'] = los2.range_area_decile[5]
+            insert_doc['largest_other_s2_hit_time_mean'] = los2.hit_time_mean
+            insert_doc['largest_other_s2_n_contributing_channels'] = los2.n_contributing_channels
+
 
     def save_waveform(self, event, collection):
         

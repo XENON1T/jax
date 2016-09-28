@@ -132,8 +132,7 @@ def main(args):
         if len(threads)==0 and not autorun:
             break
         if ntb != nta:
-            print("Killed " + str(nta-ntb) + " threads")
-        print("Sleeping")
+            print("Killed " + str(ntb-nta) + " threads")
         time.sleep(5)
 
     # Loop through threads and join all

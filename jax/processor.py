@@ -192,8 +192,6 @@ class Processor(object):
         Put each and every event into our reduced DB
         """
         
-        print("Entering process processed")
-
         filename = os.path.join( self.search_path, run_doc['name'])
         filename += ".root"
         if not os.path.exists(filename):
@@ -205,13 +203,16 @@ class Processor(object):
         # somebody who thought using ROOT was a good idea.
         import ROOT
         from pax.plugins.io.ROOTClass import load_pax_event_class_from_root
+        from pax.exceptions import MaybeOldFormatException
 
         try:
             load_pax_event_class_from_root(filename)
         except MaybeOldFormatException:
             _logger.error("There was a problem loading the ROOT class from your file."
-                      "I guess just give up. Or use a new ROOT file with the "
-                      "class embedded. Sorry.")
+                          "I guess just give up. Or use a new ROOT file with the "
+                          "class embedded. Sorry.")
+        except Exception as e:
+            _logger.error("Unconventional exception for "+filename+": "+str(e))
             return -1
 
 
@@ -230,7 +231,7 @@ class Processor(object):
                 _logger.error("Couldn't save processed event to output. Quitting.")
                 return -1
             saved +=1
-
+        output.close(run_doc['name'], saved)
         return saved
 
     

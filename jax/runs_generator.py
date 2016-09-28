@@ -80,7 +80,7 @@ class RunsGenerator(object):
         elif self.last_run is not None:
             query["number"] = {"$lte": self.last_run}
 
-        print(query)
+
         try:
             cursor = self.db.find(query).sort("_id", -1)
         except:
